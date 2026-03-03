@@ -4,18 +4,10 @@ from Bio.PDB import PDBParser, MMCIFParser
 from Bio.SeqUtils import seq1
 
 def extract_sequences(filepath):
-    """Extracts amino acid sequences from a PDB or mmCIF file (Robust Version)."""
-    if filepath.endswith('.cif'):
-        from Bio.PDB import MMCIFParser
-        parser = MMCIFParser(QUIET=True)
-    else:
-        from Bio.PDB import PDBParser
-        parser = PDBParser(QUIET=True)
-        
-    structure = parser.get_structure('complex', filepath)
+    """Extracts amino acid sequences directly from SEQRES or ATOM lines without relying on structural parsers."""
     sequences = {}
     
-    # Hardcoded dictionary to safely bypass Biopython's strict ATOM/HETATM rules
+    # Standard amino acid mapping
     aa_map = {
         'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D',
         'CYS': 'C', 'GLN': 'Q', 'GLU': 'E', 'GLY': 'G',
@@ -23,28 +15,47 @@ def extract_sequences(filepath):
         'MET': 'M', 'PHE': 'F', 'PRO': 'P', 'SER': 'S',
         'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V'
     }
-    
-    for model in structure:
-        for chain in model:
-            seq = []
-            for res in chain:
-                # Strip whitespace and enforce uppercase to handle ChimeraX formatting quirks
-                resname = res.resname.strip().upper()
+
+    with open(filepath, 'r') as f:
+        for line in f:
+            # 1. Try to read from SEQRES lines first (Fastest and cleanest)
+            if line.startswith("SEQRES"):
+                # Example: SEQRES   1 A  137  MET SER ARG ...
+                parts = line.split()
+                if len(parts) >= 5:
+                    chain_id = parts[2]
+                    residues = parts[4:] # Grab all the 3-letter codes on this line
+                    
+                    if chain_id not in sequences:
+                        sequences[chain_id] = []
+                        
+                    for res in residues:
+                        if res in aa_map:
+                            sequences[chain_id].append(aa_map[res])
+
+            # 2. Fallback: If no SEQRES lines exist, read from ATOM lines (CA only to avoid duplication)
+            elif line.startswith("ATOM  ") and " CA " in line:
+                # Example: ATOM      1  N   MET A   1 ...
+                chain_id = line[21].strip()
+                resname = line[17:20].strip()
                 
-                # If it's a recognized amino acid, add it to the sequence
+                if not chain_id:
+                    chain_id = "UNKNOWN"
+                    
+                if chain_id not in sequences:
+                    sequences[chain_id] = []
+                    
                 if resname in aa_map:
-                    seq.append(aa_map[resname])
-                    
-            if seq:
-                # If ChimeraX stripped the chain ID, it might save as a blank space
-                chain_id = chain.id.strip()
-                if not chain_id: 
-                    chain_id = "UNKNOWN_CHAIN" # Fallback so it doesn't crash
-                    
-                sequences[chain.id] = "".join(seq)
-        break # Only process the first model
+                    # We only append if it's not a duplicate (handling alternate locations clumsily but effectively for sequence)
+                    sequences[chain_id].append(aa_map[resname])
+
+    # Convert lists to strings
+    final_sequences = {chain: "".join(seq) for chain, seq in sequences.items()}
+    
+    if not final_sequences:
+        print("Warning: Could not find any valid sequences in the file.")
         
-    return sequences
+    return final_sequences
 
 def parse_residue_ranges(range_str):
     """Parses a string like '[(1-20),25,27,35,(50-67)]' into a list of integers."""
