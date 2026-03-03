@@ -1,13 +1,10 @@
 import argparse
 import os
-from Bio.PDB import PDBParser, MMCIFParser
-from Bio.SeqUtils import seq1
 
 def extract_sequences(filepath):
-    """Extracts amino acid sequences directly from SEQRES or ATOM lines without relying on structural parsers."""
+    """Extracts amino acid sequences directly from SEQRES or ATOM lines."""
     sequences = {}
     
-    # Standard amino acid mapping
     aa_map = {
         'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D',
         'CYS': 'C', 'GLN': 'Q', 'GLU': 'E', 'GLY': 'G',
@@ -20,11 +17,10 @@ def extract_sequences(filepath):
         for line in f:
             # 1. Try to read from SEQRES lines first (Fastest and cleanest)
             if line.startswith("SEQRES"):
-                # Example: SEQRES   1 A  137  MET SER ARG ...
                 parts = line.split()
                 if len(parts) >= 5:
                     chain_id = parts[2]
-                    residues = parts[4:] # Grab all the 3-letter codes on this line
+                    residues = parts[4:] 
                     
                     if chain_id not in sequences:
                         sequences[chain_id] = []
@@ -33,9 +29,8 @@ def extract_sequences(filepath):
                         if res in aa_map:
                             sequences[chain_id].append(aa_map[res])
 
-            # 2. Fallback: If no SEQRES lines exist, read from ATOM lines (CA only to avoid duplication)
+            # 2. Fallback: If no SEQRES lines exist, read from ATOM lines
             elif line.startswith("ATOM  ") and " CA " in line:
-                # Example: ATOM      1  N   MET A   1 ...
                 chain_id = line[21].strip()
                 resname = line[17:20].strip()
                 
@@ -46,20 +41,15 @@ def extract_sequences(filepath):
                     sequences[chain_id] = []
                     
                 if resname in aa_map:
-                    # We only append if it's not a duplicate (handling alternate locations clumsily but effectively for sequence)
                     sequences[chain_id].append(aa_map[resname])
 
-    # Convert lists to strings
     final_sequences = {chain: "".join(seq) for chain, seq in sequences.items()}
-    
     if not final_sequences:
         print("Warning: Could not find any valid sequences in the file.")
-        
     return final_sequences
 
 def parse_residue_ranges(range_str):
     """Parses a string like '[(1-20),25,27,35,(50-67)]' into a list of integers."""
-    # Clean up the string to handle various formatting habits
     clean_str = range_str.replace(' ', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '')
     indices = set()
     
@@ -77,12 +67,15 @@ def parse_residue_ranges(range_str):
     return sorted(list(indices))
 
 def write_yaml(sequences, output_path):
-    """Writes a Boltz-2 formatted YAML file."""
-    lines = ["polymers:"]
+    """Writes a Boltz-2 formatted YAML file using the updated version 1 schema."""
+    lines = [
+        "version: 1",
+        "sequences:"
+    ]
     for chain_id, seq in sequences.items():
-        lines.append(f"  - id: {chain_id}")
-        lines.append(f"    molecule_type: protein")
-        lines.append(f"    sequence: {seq}")
+        lines.append(f"  - protein:")
+        lines.append(f"      id: {chain_id}")
+        lines.append(f"      sequence: {seq}")
         
     with open(output_path, 'w') as f:
         f.write("\n".join(lines) + "\n")
@@ -120,7 +113,6 @@ def main():
     for idx in target_indices:
         i = idx - 1 # Convert 1-based index to 0-based Python string index
         
-        # Safety check to prevent crashing if a requested index is larger than the peptide
         if i < 0 or i >= len(target_seq):
             print(f"Warning: Requested residue index {idx} is out of bounds for chain {args.chain} (length {len(target_seq)}). Skipping.")
             continue
