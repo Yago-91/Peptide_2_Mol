@@ -4,23 +4,43 @@ from Bio.PDB import PDBParser, MMCIFParser
 from Bio.SeqUtils import seq1
 
 def extract_sequences(filepath):
-    """Extracts amino acid sequences from a PDB or mmCIF file."""
+    """Extracts amino acid sequences from a PDB or mmCIF file (Robust Version)."""
     if filepath.endswith('.cif'):
+        from Bio.PDB import MMCIFParser
         parser = MMCIFParser(QUIET=True)
     else:
+        from Bio.PDB import PDBParser
         parser = PDBParser(QUIET=True)
         
     structure = parser.get_structure('complex', filepath)
     sequences = {}
     
+    # Hardcoded dictionary to safely bypass Biopython's strict ATOM/HETATM rules
+    aa_map = {
+        'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D',
+        'CYS': 'C', 'GLN': 'Q', 'GLU': 'E', 'GLY': 'G',
+        'HIS': 'H', 'ILE': 'I', 'LEU': 'L', 'LYS': 'K',
+        'MET': 'M', 'PHE': 'F', 'PRO': 'P', 'SER': 'S',
+        'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V'
+    }
+    
     for model in structure:
         for chain in model:
             seq = []
             for res in chain:
-                # Check if it's a standard amino acid (ignores water/ligands)
-                if res.id[0] == ' ' and res.resname in seq1:
-                    seq.append(seq1(res.resname))
+                # Strip whitespace and enforce uppercase to handle ChimeraX formatting quirks
+                resname = res.resname.strip().upper()
+                
+                # If it's a recognized amino acid, add it to the sequence
+                if resname in aa_map:
+                    seq.append(aa_map[resname])
+                    
             if seq:
+                # If ChimeraX stripped the chain ID, it might save as a blank space
+                chain_id = chain.id.strip()
+                if not chain_id: 
+                    chain_id = "UNKNOWN_CHAIN" # Fallback so it doesn't crash
+                    
                 sequences[chain.id] = "".join(seq)
         break # Only process the first model
         
