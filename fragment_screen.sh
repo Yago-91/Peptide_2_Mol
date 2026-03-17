@@ -21,7 +21,7 @@ db_file="$1"
 output_file="${db_file%.psd}_hits.sdf"
 
 # Run the screen silently
-psdscreen -Q pml -q "$QUERY" -i "$db_file" -o "$output_file" -x 1 > /dev/null 2>&1
+psdscreen -Q pml -q "$QUERY" -d "$db_file" -o "$output_file" -x 1 -t 1 > /dev/null 2>&1
 
 # If the output file is totally empty (no hits found), delete it to keep things clean
 if [[ ! -s "$output_file" ]]; then
