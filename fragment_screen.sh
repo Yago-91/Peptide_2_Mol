@@ -1,13 +1,10 @@
 #!/bin/bash
 
 # 1. Setup global variables
-export QUERY="YOUR_MODEL_NAME.pml"
+export QUERY="pharmacophore_east_face_2.pml"
 export FINAL_HITS="All_Fragment_Hits.sdf"
 
-# 2. The Master Lock: Force each psdscreen instance to use exactly 1 thread
-export OMP_NUM_THREADS=1
-
-# Clean up any previous runs to start fresh
+# 2. Clean up any previous runs to start fresh
 rm -f "$FINAL_HITS"
 find . -type f -name "*_hits.sdf" -delete
 
@@ -33,8 +30,8 @@ chmod +x worker_screen.sh
 
 echo "Deploying 46 independent screening jobs simultaneously..."
 
-# 4. The Scatter: Feed the small databases to xargs, maintaining 46 active jobs
-find . -type f -name "*.psd" ! -name "ZINC_InStock_Master.psd" | xargs -n 1 -P 46 ./worker_screen.sh
+# 4. The Scatter: Feed the small databases to xargs, maintaining 40 active jobs
+find . -type f -name "*.psd" ! -name "ZINC_InStock_Master.psd" | xargs -n 1 -P 40 ./worker_screen.sh
 
 echo "Screening complete! Gathering and merging hit files..."
 
