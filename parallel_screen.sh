@@ -34,8 +34,6 @@ if [ ! -f "$QUERY" ]; then
     exit 1
 fi
 
-# Create a unique Run ID using the script's Process ID ($$) to prevent collisions
-# if you decide to run multiple different screens at the same time.
 RUN_ID="run_$$"
 LOG_FILE="${RUN_ID}_completed.log"
 WORKER_SCRIPT="${RUN_ID}_worker.sh"
@@ -47,11 +45,10 @@ echo "Scanning directory to count databases..."
 TOTAL_FILES=$(find . -type f -name "*.psd" ! -name "ZINC_InStock_Master.psd" | wc -l)
 echo "Found $TOTAL_FILES databases. Initializing workload..."
 
-# Build the worker script (using EOF without quotes so we can pass the RUN_ID and QUERY)
+# Build the worker script
 cat << EOF > "$WORKER_SCRIPT"
 #!/bin/bash
 db_file="\$1"
-# Create a completely unique temp file name for this specific run
 output_file="./${RUN_ID}_temp_\$(basename "\$db_file" .psd).sdf"
 
 psdscreen -Q pml -q "$QUERY" -d "\$db_file" -o "\$output_file" -x 1 -t 1 > /dev/null 2>&1
@@ -65,19 +62,19 @@ EOF
 
 chmod +x "$WORKER_SCRIPT"
 
-# The Background Monitor Function
+# The Background Monitor Function (CLEANED)
 monitor_progress() {
     while true; do
-        DONE=\$(wc -l < "$LOG_FILE")
+        DONE=$(wc -l < "$LOG_FILE")
         if [ "$TOTAL_FILES" -gt 0 ]; then
-            PERCENT=\$(( DONE * 100 / TOTAL_FILES ))
+            PERCENT=$(( DONE * 100 / TOTAL_FILES ))
         else
             PERCENT=100
         fi
         
-        printf "\rProgress: [%-50s] %d%% (%d/%d)" \$(printf "#%.0s" \$(seq 1 \$((PERCENT / 2)))) "\$PERCENT" "\$DONE" "\$TOTAL_FILES"
+        printf "\rProgress: [%-50s] %d%% (%d/%d)" $(printf "#%.0s" $(seq 1 $((PERCENT / 2)))) "$PERCENT" "$DONE" "$TOTAL_FILES"
         
-        if [ "\$DONE" -ge "$TOTAL_FILES" ]; then break; fi
+        if [ "$DONE" -ge "$TOTAL_FILES" ]; then break; fi
         sleep 2
     done
 }
@@ -95,10 +92,10 @@ echo ""
 
 echo "Gathering and merging hit files..."
 
-# The Gather: Only collect temp files belonging to THIS specific run
+# The Gather
 find . -maxdepth 1 -type f -name "${RUN_ID}_temp_*.sdf" -exec cat {} + > "$FINAL_HITS"
 
-# Clean up ALL temp files and trackers associated with this run
+# Clean up
 rm -f "$LOG_FILE" "$WORKER_SCRIPT"
 find . -maxdepth 1 -type f -name "${RUN_ID}_temp_*.sdf" -delete
 
