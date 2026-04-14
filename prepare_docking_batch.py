@@ -10,7 +10,7 @@ from meeko import PDBQTWriterLegacy
 RDLogger.DisableLog('rdApp.*')
 
 # Set up command line arguments
-parser = argparse.ArgumentParser(description="Extract hits from Excel and convert to PDBQT.")
+parser = argparse.ArgumentParser(description="Extract hits from Excel, add Hydrogens, and convert to PDBQT.")
 parser.add_argument("-e", "--excel", required=True, help="Path to your Excel file with selected hits")
 parser.add_argument("-s", "--sdf", required=True, help="Path to your aggregated master SDF file")
 parser.add_argument("-o", "--outdir", default="Docking_Ready", help="Output directory for PDBQT files")
@@ -27,12 +27,12 @@ except Exception as e:
 
 print(f"Found {len(target_ids)} unique ZINC IDs to extract.")
 
-# 2. Setup the output directory and the Modern Meeko Preparator
+# 2. Setup output directory and Meeko
 os.makedirs(args.outdir, exist_ok=True)
 preparator = MoleculePreparation()
 
-# 3. Scan the aggregated SDF
-print(f"Scanning {args.sdf} and generating PDBQT files...")
+# 3. Scan SDF, Add Protons, and Convert
+print(f"Scanning {args.sdf}, adding explicit hydrogens, and generating PDBQT files...")
 suppl = Chem.SDMolSupplier(args.sdf)
 processed_count = 0
 
@@ -44,8 +44,11 @@ for mol in suppl:
     
     if zinc_id in target_ids:
         try:
-            # Modern Meeko syntax (v0.6.0+)
-            mol_setups = preparator.prepare(mol)
+            # CRITICAL FIX: Add explicit hydrogens AND calculate their 3D coordinates
+            mol_with_H = Chem.AddHs(mol, addCoords=True)
+            
+            # Pass the protonated molecule to Meeko
+            mol_setups = preparator.prepare(mol_with_H)
             pdbqt_string, is_ok, error_msg = PDBQTWriterLegacy.write_string(mol_setups[0])
             
             if is_ok:
@@ -60,7 +63,7 @@ for mol in suppl:
         except Exception as e:
             print(f"Failed to prepare {zinc_id}: {e}")
 
-print(f"\nSuccess! Generated {processed_count} ready-to-dock .pdbqt files in ./{args.outdir}/")
+print(f"\nSuccess! Generated {processed_count} protonated, ready-to-dock .pdbqt files in ./{args.outdir}/")
 
 if len(target_ids) > 0:
     print(f"Warning: {len(target_ids)} IDs from your Excel were not found in the SDF.")
