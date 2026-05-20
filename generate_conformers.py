@@ -66,7 +66,9 @@ def main():
     valid_count = 0
     for mol in results:
         if mol is not None:
-            writer.write(mol)
+            # Loop through and explicitly write EVERY pose generated
+            for conf in mol.GetConformers():
+                writer.write(mol, confId=conf.GetId())
             valid_count += 1
     writer.close()
     
