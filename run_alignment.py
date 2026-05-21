@@ -11,12 +11,11 @@ def main():
     print(f"Loading queries from {args.query} and targets from {args.target}...")
     
     # Initialize the ROSHAMBO2 engine
-    # backend='cuda' pushes the volumetric integrals to the GPU
     # color=True calculates pharmacophoric feature overlap alongside steric shape
+    # Initialize the ROSHAMBO2 engine using the V2 API
     aligner = Roshambo2(
         args.query, 
         args.target,
-        backend='cuda',
         color=True
     )
 
