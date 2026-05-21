@@ -16,7 +16,8 @@ def main():
     aligner = Roshambo2(
         args.query, 
         args.target,
-        color=True
+        color=True,
+        n_cpus_prepare=44
     )
 
     print("Executing GPU-accelerated alignment...")
