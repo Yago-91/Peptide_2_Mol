@@ -14,8 +14,8 @@ def main():
     # backend='cuda' pushes the volumetric integrals to the GPU
     # color=True calculates pharmacophoric feature overlap alongside steric shape
     aligner = Roshambo2(
-        query_file=args.query, 
-        target_file=args.target,
+        args.query, 
+        args.target,
         backend='cuda',
         color=True
     )
