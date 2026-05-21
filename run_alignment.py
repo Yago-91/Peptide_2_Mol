@@ -1,5 +1,5 @@
 import argparse
-from roshambo2.api import Roshambo2
+from roshambo2 import Roshambo2
 
 def main():
     parser = argparse.ArgumentParser()
