@@ -51,7 +51,7 @@ def process_chunk(mols, chunk_idx, target_h5, all_results):
     try:
         # Initialize engine on just this small chunk
         aligner = Roshambo2(chunk_filename, target_h5, color=True)
-        scores_df = aligner.compute()
+        scores_df = aligner.compute(n_gpus=1)
         all_results.append(scores_df)
     except Exception as e:
         print(f"Error during chunk {chunk_idx}: {e}")
