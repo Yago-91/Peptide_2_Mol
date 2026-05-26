@@ -3,8 +3,8 @@ from rdkit import Chem
 
 def main():
     # Update this to your actual ZINC conformer SDF file
-    input_sdf = "Filtered_hits_smiles_clean.sdf" 
-    output_sdf = "zinc_queries_suffixed.sdf"
+    input_sdf = "East_face2_top_hits.sdf" 
+    output_sdf = "East_face2_top_hits_suffixed.sdf"
     
     print(f"Reading {input_sdf} and suffixing conformer names...")
     

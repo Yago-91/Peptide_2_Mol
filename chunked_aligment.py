@@ -4,14 +4,14 @@ from rdkit import Chem
 from roshambo2 import Roshambo2
 
 def main():
-    input_query_sdf = "zinc_queries_suffixed.sdf"
+    input_query_sdf = "zinc_queries_suffixed.sdf" # Ensure this points to your 14-hit file
     target_h5 = "ETP_cpds_clean.h5"
     final_output = "ZINC_ETP_master_scores.csv"
     
-    # 150 queries against 1M targets limits matrix size to ~12GB RAM/VRAM
-    chunk_size = 150 
+    # 50 poses perfectly groups your top 14 hits one molecule at a time
+    chunk_size = 50 
 
-    print(f"Reading {input_query_sdf} and splitting into GPU-safe chunks...")
+    print(f"Reading {input_query_sdf} and splitting into chunks...")
     supplier = Chem.ForwardSDMolSupplier(input_query_sdf, removeHs=False)
     
     chunk_idx = 1
@@ -27,16 +27,17 @@ def main():
             chunk_idx += 1
             current_chunk_mols = []
             
-    # Process the remaining poses at the end of the file
+    # Process any remaining poses at the end of the file
     if current_chunk_mols:
         process_chunk(current_chunk_mols, chunk_idx, target_h5, all_results)
 
     print(f"\nStitching {len(all_results)} chunks together...")
+    # Because we converted to DataFrames in the loop, this will now work perfectly
     final_df = pd.concat(all_results, ignore_index=True)
     
     # Save the massive results file
     final_df.to_csv(final_output, index=False)
-    print(f"SUCCESS! Matrix limit bypassed. Master scores saved to {final_output}")
+    print(f"SUCCESS! Master scores saved to {final_output}")
 
 def process_chunk(mols, chunk_idx, target_h5, all_results):
     chunk_filename = f"temp_query_chunk.sdf"
@@ -49,10 +50,17 @@ def process_chunk(mols, chunk_idx, target_h5, all_results):
     
     print(f"\n--- Launching GPU Alignment for Chunk {chunk_idx} ({len(mols)} poses) ---")
     try:
-        # Initialize engine on just this small chunk
         aligner = Roshambo2(chunk_filename, target_h5, color=True)
-        scores_df = aligner.compute(backend='cuda', n_gpus=1)
+        
+        # 1. Compute the raw dictionary on the GPU
+        raw_results = aligner.compute(backend='cuda', n_gpus=1)
+        
+        # 2. Convert the dictionary to a pandas DataFrame
+        scores_df = pd.DataFrame(raw_results)
+        
+        # 3. Append the clean DataFrame
         all_results.append(scores_df)
+        
     except Exception as e:
         print(f"Error during chunk {chunk_idx}: {e}")
     finally:
