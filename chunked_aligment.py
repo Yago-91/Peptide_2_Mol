@@ -55,8 +55,13 @@ def process_chunk(mols, chunk_idx, target_h5, all_results):
         # 1. Compute the raw dictionary on the GPU
         raw_results = aligner.compute(backend='cuda', n_gpus=1)
         
-        # 2. Convert the dictionary to a pandas DataFrame
-        scores_df = pd.DataFrame(raw_results)
+        # 2. Bulletproof pandas conversion
+        try:
+            scores_df = pd.DataFrame(raw_results)
+        except ValueError:
+            # If pandas complains about scalar values without an index, 
+            # we wrap the raw dictionary in a list to force it into a single row.
+            scores_df = pd.DataFrame([raw_results])
         
         # 3. Append the clean DataFrame
         all_results.append(scores_df)
