@@ -4,9 +4,9 @@ from rdkit import Chem
 from roshambo2 import Roshambo2
 
 def main():
-    input_query_sdf = "zinc_queries_suffixed.sdf" # Ensure this points to your 14-hit file
+    input_query_sdf = "Top_Hits_east_face_3_suffixed.sdf" # Ensure this points to your 14-hit file
     target_h5 = "ETP_cpds_clean.h5"
-    final_output = "ZINC_ETP_master_scores.csv"
+    final_output = "Top_Hits_east_face_3_master_scores.csv"
     
     # 50 poses perfectly groups your top 14 hits one molecule at a time
     chunk_size = 50 
