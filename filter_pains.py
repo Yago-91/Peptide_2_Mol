@@ -1,13 +1,40 @@
 import argparse
 import sys
+import os
 import pandas as pd
-from rdkit import Chem
-from rdkit.Chem import FilterCatalog
+from multiprocessing import Pool
+
+# Global variable inside each worker process to hold the catalog
+worker_catalog = None
+
+def init_worker():
+    """Initializes the RDKit catalog once per CPU core when the process starts."""
+    global worker_catalog
+    from rdkit.Chem import FilterCatalog
+    params = FilterCatalog.FilterCatalogParams()
+    params.AddCatalog(FilterCatalog.FilterCatalogParams.FilterCatalogs.PAINS)
+    worker_catalog = FilterCatalog.FilterCatalog(params)
+
+def check_smiles_worker(smiles_val):
+    """The parallel worker function executing on an individual CPU core."""
+    from rdkit import Chem
+    smiles = str(smiles_val).strip()
+    
+    if not smiles or smiles.lower() == 'nan' or smiles == '':
+        return False
+        
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return False
+        
+    # Return True if it does NOT match a PAINS alert
+    return not worker_catalog.HasMatch(mol)
 
 def main():
-    parser = argparse.ArgumentParser(description="Filter PAINS compounds using SMILES embedded directly in the scores CSV.")
-    parser.add_argument("--input", required=True, help="Input master scores CSV file (e.g., ZINC_ETP_master_scores.csv)")
-    parser.add_argument("--output", default="PAINS_free_scores.csv", help="Output filename for the clean results")
+    parser = argparse.ArgumentParser(description="Parallel PAINS filtering utilizing multi-core CPUs.")
+    parser.add_argument("--input", required=True, help="Input master scores CSV file")
+    parser.add_argument("--output", default="PAINS_free_scores.csv", help="Output filename")
+    parser.add_argument("--cores", type=int, default=None, help="Number of CPU cores to use (defaults to all available)")
     args = parser.parse_args()
 
     print(f"Loading alignment scores from {args.input}...")
@@ -17,45 +44,53 @@ def main():
         print(f"Error: Could not find input file: {args.input}")
         sys.exit(1)
 
-    if len(df.columns) < 3:
-        print(f"Error: The input file does not have at least 3 columns. Found {len(df.columns)} columns.")
+    total_rows = len(df)
+    if total_rows == 0:
+        print("Error: Input file is empty.")
         sys.exit(1)
 
-    # Identify the SMILES column dynamically (the 3rd column, which is index 2)
+    if len(df.columns) < 3:
+        print(f"Error: Input file lacks a 3rd column for SMILES. Found {len(df.columns)} columns.")
+        sys.exit(1)
+
     smiles_col_name = df.columns[2]
-    print(f"Detected SMILES data in the third column: '{smiles_col_name}'")
+    
+    # Determine CPU core allocation
+    available_cores = os.cpu_count()
+    selected_cores = args.cores if args.cores else available_cores
+    print(f"Detected SMILES in column: '{smiles_col_name}'")
+    print(f"Allocating {selected_cores}/{available_cores} CPU cores for parallel screening...")
 
-    print("Initializing RDKit PAINS filters...")
-    params = FilterCatalog.FilterCatalogParams()
-    params.AddCatalog(FilterCatalog.FilterCatalogParams.FilterCatalogs.PAINS)
-    catalog = FilterCatalog.FilterCatalog(params)
+    mask = []
+    processed_count = 0
 
-    def is_pains_free(smiles_val):
-        smiles = str(smiles_val).strip()
+    # Launch the parallel pool
+    # The initializer ensures the heavy PAINS catalog is loaded only ONCE per core, not per SMILES
+    with Pool(processes=selected_cores, initializer=init_worker) as pool:
         
-        if not smiles or smiles.lower() == 'nan' or smiles == '':
-            return False  # Filter out rows with missing structural data
+        # imap maintains row order while processing asynchronously
+        for result in pool.imap(check_smiles_worker, df[smiles_col_name], chunksize=100):
+            mask.append(result)
+            processed_count += 1
             
-        mol = Chem.MolFromSmiles(smiles)
-        if mol is None:
-            return False  # Filter out rows where RDKit cannot parse the chemistry
-            
-        # Return True only if it does NOT match a PAINS alert
-        return not catalog.HasMatch(mol)
+            # Live terminal progress updates
+            if processed_count % 50 == 0 or processed_count == total_rows:
+                percent = (processed_count / total_rows) * 100
+                bar_length = 30
+                filled_length = int(round(bar_length * processed_count / float(total_rows)))
+                bar = '█' * filled_length + '-' * (bar_length - filled_length)
+                
+                sys.stdout.write(f"\rProgress: |{bar}| {percent:.1f}% ({processed_count}/{total_rows} rows)")
+                sys.stdout.flush()
 
-    print("Screening all rows for structural alerts...")
-    initial_count = len(df)
-    
-    # Apply the filter directly using the third column
-    mask = df[smiles_col_name].apply(is_pains_free)
+    print("\n\nFiltering dataset and writing output...")
     clean_df = df[mask]
-    
-    dropped_count = initial_count - len(clean_df)
+    dropped_count = total_rows - len(clean_df)
 
     clean_df.to_csv(args.output, index=False)
     
-    print("\n--- Triage Complete ---")
-    print(f"Total alignment pairs evaluated: {initial_count}")
+    print("--- Triage Complete ---")
+    print(f"Total alignment pairs evaluated: {total_rows}")
     print(f"PAINS artifacts removed:         {dropped_count}")
     print(f"Clean, assay-ready candidates:   {len(clean_df)}")
     print(f"Saved highly confident list to:  {args.output}")
