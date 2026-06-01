@@ -6,26 +6,30 @@ def main():
     parser = argparse.ArgumentParser(description="Rank drug pairs using thermodynamic ensemble scoring.")
     parser.add_argument("--input", required=True, help="Input PAINS-free CSV")
     parser.add_argument("--output", default="Ensemble_Ranked_Hits.csv", help="Output ranked CSV")
-    parser.add_argument("--threshold", type=float, default=1.0, help="Baseline ComboTanimoto to be considered a 'good' pose")
+    parser.add_argument("--threshold", type=float, default=1.0, help="Baseline score to be considered a 'good' pose")
     args = parser.parse_args()
 
     print(f"Loading data from {args.input}...")
     df = pd.read_csv(args.input)
 
     # 1. Strip the pose suffix (e.g., "ZINC123_42" -> "ZINC123")
-    # We split by the last underscore and keep the first part
     df['ZINC_Parent'] = df['Query_ID'].astype(str).str.rsplit('_', n=1).str[0]
     
-    # Standardize the target column name
-    target_col = 'Name' if 'Name' in df.columns else 'Target_ID'
-    if target_col not in df.columns:
-        target_col = df.columns[1]
+    # 2. Dynamic column mapping for ROSHAMBO2 V2 outputs
+    target_col = 'name' if 'name' in df.columns else df.columns[1]
+    
+    if tanimoto_combo_legacy' in df.columns:
+        score_col = 'tanimoto_combo_legacy'
+    else:
+        print("Fatal Error: Could not find the combination score column.")
+        return
 
+    print(f"Using '{score_col}' for scoring and '{target_col}' for targets.")
     print("Calculating Ensemble metrics per drug pair...")
 
     # Define a custom aggregation function to calculate our math
     def calculate_ensemble_metrics(group):
-        scores = group['ComboTanimoto'].sort_values(ascending=False).values
+        scores = group[score_col].sort_values(ascending=False).values
         
         max_score = scores[0] if len(scores) > 0 else 0
         
@@ -40,7 +44,7 @@ def main():
         ies = np.sum(good_poses - args.threshold) if hit_count > 0 else 0
         
         return pd.Series({
-            'Max_ComboTanimoto': max_score,
+            f'Max_{score_col}': max_score,
             'Top_3_Mean': top_3_mean,
             f'Poses_Over_{args.threshold}': hit_count,
             'Integrated_Ensemble_Score': ies,
