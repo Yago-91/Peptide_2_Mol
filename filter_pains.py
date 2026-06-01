@@ -1,66 +1,54 @@
 import argparse
+import sys
 import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import FilterCatalog
 
 def main():
-    parser = argparse.ArgumentParser(description="Filter PAINS compounds from a ROSHAMBO2 alignment scores CSV.")
-    parser.add_argument("--scores", required=True, help="Input CSV file containing the alignment scores")
-    parser.add_argument("--library", required=True, help="Input Excel file containing the SMILES library")
+    parser = argparse.ArgumentParser(description="Filter PAINS compounds using SMILES embedded directly in the scores CSV.")
+    parser.add_argument("--input", required=True, help="Input master scores CSV file (e.g., ZINC_ETP_master_scores.csv)")
     parser.add_argument("--output", default="PAINS_free_scores.csv", help="Output filename for the clean results")
     args = parser.parse_args()
 
-    print(f"Loading alignment scores from {args.scores}...")
+    print(f"Loading alignment scores from {args.input}...")
     try:
-        scores_df = pd.read_csv(args.scores)
+        df = pd.read_csv(args.input)
     except FileNotFoundError:
-        print(f"Error: Could not find scores file: {args.scores}")
-        return
+        print(f"Error: Could not find input file: {args.input}")
+        sys.exit(1)
 
-    print(f"Loading SMILES library from {args.library}...")
-    try:
-        lib_df = pd.read_excel(args.library).dropna(how='all')
-    except FileNotFoundError:
-        print(f"Error: Could not find library file: {args.library}")
-        return
-        
-    lib_df = lib_df.drop_duplicates(subset=lib_df.columns[0], keep='first')
-    
-    # Create a fast lookup dictionary: { 'ID': 'SMILES' }
-    id_to_smiles = dict(zip(
-        lib_df.iloc[:, 0].astype(str).str.strip(), 
-        lib_df.iloc[:, 1].astype(str).str.strip()
-    ))
+    if len(df.columns) < 3:
+        print(f"Error: The input file does not have at least 3 columns. Found {len(df.columns)} columns.")
+        sys.exit(1)
+
+    # Identify the SMILES column dynamically (the 3rd column, which is index 2)
+    smiles_col_name = df.columns[2]
+    print(f"Detected SMILES data in the third column: '{smiles_col_name}'")
 
     print("Initializing RDKit PAINS filters...")
     params = FilterCatalog.FilterCatalogParams()
     params.AddCatalog(FilterCatalog.FilterCatalogParams.FilterCatalogs.PAINS)
     catalog = FilterCatalog.FilterCatalog(params)
 
-    # Automatically detect the target column name
-    target_col = 'Name' if 'Name' in scores_df.columns else 'Target_ID'
-    if target_col not in scores_df.columns:
-        target_col = scores_df.columns[1] # Fallback to the second column
-
-    def is_pains_free(target_id):
-        target_id = str(target_id).strip()
-        smiles = id_to_smiles.get(target_id)
+    def is_pains_free(smiles_val):
+        smiles = str(smiles_val).strip()
         
-        if not smiles or smiles.lower() == 'nan':
-            return False  
+        if not smiles or smiles.lower() == 'nan' or smiles == '':
+            return False  # Filter out rows with missing structural data
             
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
-            return False  
+            return False  # Filter out rows where RDKit cannot parse the chemistry
             
         # Return True only if it does NOT match a PAINS alert
         return not catalog.HasMatch(mol)
 
-    print("Screening all candidates for structural alerts...")
-    initial_count = len(scores_df)
+    print("Screening all rows for structural alerts...")
+    initial_count = len(df)
     
-    mask = scores_df[target_col].apply(is_pains_free)
-    clean_df = scores_df[mask]
+    # Apply the filter directly using the third column
+    mask = df[smiles_col_name].apply(is_pains_free)
+    clean_df = df[mask]
     
     dropped_count = initial_count - len(clean_df)
 
