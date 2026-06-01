@@ -18,7 +18,7 @@ def main():
     # 2. Dynamic column mapping for ROSHAMBO2 V2 outputs
     target_col = 'name' if 'name' in df.columns else df.columns[1]
     
-    if tanimoto_combo_legacy' in df.columns:
+    if 'tanimoto_combo_legacy' in df.columns:
         score_col = 'tanimoto_combo_legacy'
     else:
         print("Fatal Error: Could not find the combination score column.")
